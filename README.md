@@ -24,3 +24,6 @@ post hoc tests
 model stability and plotting 
 
 If you spot mistakes (likely) or want something else implemented, feel free to contact me. As with all my scripts, feedback is appreciated.
+
+
+Author: Christian Blum, member of Barbara Klump lab and Thomas Bugnyar lab
