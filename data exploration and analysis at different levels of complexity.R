@@ -1,3 +1,4 @@
+# Author: Christian Blum
 # Name: data exploration and analysis at different levels of complexity
 # Summary: this script uses plots and tables to explore data, check for outliers, data presence in interaction groups, 
 # relationships between co-variates and shows some best practices to do before you start your statistical analysis.
