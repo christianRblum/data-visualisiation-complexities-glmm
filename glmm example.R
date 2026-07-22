@@ -275,7 +275,7 @@ full.model <- glmmTMB(
 # colinearity test via variance inflation factors
 # we use a linear model with only fixed main effects (no interactions, no random effects)
 xx=lm(count ~ mined + spp + cover + DOP + Wtemp + poly(DOY, 2), data=model_data) 
-vif(xx) # good. anything above 2 or 3 could indicate problems
+vif(xx)[, 3]^2 # good. anything above 2 or 3 could indicate problems
 
 # check residuals
 hist(resid(full.model)) 
