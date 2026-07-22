@@ -1,3 +1,5 @@
+Author: Christian Blum, member of Barbara Klump lab and Thomas Bugnyar lab
+
 These scripts are showcases of some approaches when working with your scientific data in R, intended for students just starting out with data analysis.
 They are oversimplified and short to provide a low barrier of entry for beginners. That means they are sometimes incomplete and might not be the best fit for your specific situation.
 They certainly do not replace participation in statistics classes or workshops!
@@ -24,6 +26,3 @@ post hoc tests
 model stability and plotting 
 
 If you spot mistakes (likely) or want something else implemented, feel free to contact me. As with all my scripts, feedback is appreciated.
-
-
-Author: Christian Blum, member of Barbara Klump lab and Thomas Bugnyar lab
