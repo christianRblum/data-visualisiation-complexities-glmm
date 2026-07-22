@@ -13,6 +13,7 @@
 # set up workspace ####
 
 # load packages
+library(dplyr)
 library(glmmTMB)
 library(car)
 library(DHARMa)
@@ -84,19 +85,20 @@ head(data, 20) # show first 20 rows
 
 # option 1 (possibly safer):
   # download it manually, then source it using
-  # source("diagnostic_fcns.r")
+  source("C:/ucloud/Work/Roger R functions/diagnostic_fcns.r")
 
 # option 2:
-  # download it using R code. this is simpler, but it downloads whatever is located under the following link,
-  # whether it is the custom function or something else. in this instance it should be fine, but use at your own risk.
-  
-  # load custom function for random slopes:
-  tmp <- tempfile(fileext = ".R")
-  download.file(
-    "https://zenodo.org/records/7670524/files/diagnostic_fcns.r?download=1",
-    destfile = tmp, mode = "wb", quiet = TRUE
-  )
-  source(tmp) 
+  # # ONLINE VERSION SEEMS TO BE OUTDATED AND NOT WORKING WITH glmmTMB
+  # # download it using R code. this is simpler, but it downloads whatever is located under the following link,
+  # # whether it is the custom function or something else. in this instance it should be fine, but use at your own risk.
+  # 
+  # # load custom function for random slopes:
+  # tmp <- tempfile(fileext = ".R")
+  # download.file(
+  #   "https://zenodo.org/records/7670524/files/diagnostic_fcns.r?download=1",
+  #   destfile = tmp, mode = "wb", quiet = TRUE
+  # )
+  # source(tmp) 
 
 # now that we sourced the custom function, we can use it
 # specify our model in the custom function and run it on our data
@@ -191,15 +193,42 @@ table(data$site, data$sample) # sample 1 for site R-1 is different from sample 1
 #   data = model_data
 # )
 
+# UPDATE: for simplicity I chose to remove the nested random effect from the actual code, as it unnecessarily complicates
+# things and this is just a showcase of a simple approach. 
+# If you need nested random slopes, feel free to contact me.
+
+
 # this looks better, but we still have to dummy code and center factors, z-transform covariates for use in random slopes
 # fortunately, the function already took care of the dummy coding for us!
 
-# factors (center):
+# centering (subtracting the mean):
+# the effect of a given predictor (estimate) is shown for all other predictors being at reference level or at 0.
+# sometimes that makes no sense, because 0 is outside of the range of the dataset.
+# e.g., a water temperature of 0°C when your data ranges from 10–25°C.
+# if we center it, 0 becomes average, which makes much more sense and helps the model converge.
+
+# Z-transforming (centering + dividing by SD) additionally puts all covariates on the same unit-free scale (mean = 0, SD = 1).
+# this basically exchanges the different units of measurements (gram vs year) for standard deviations 
+# (standard deviation of weight vs standard deviation of age). this prevents predictors with large numeric
+# ranges (e.g., weight in grams) from dominating smaller ones (e.g. age in years), which helps the model converge.
+
+# dummy coding:
+# for factors, dummy-coding converts categorical levels into binary 0/1 columns.
+# centering these dummy variables ensures that the reference point (zero) again represents the mean, rather than a specific
+# factor level. this achieves the same benefit as centering covariates and helps the model converge.
+
+
+# factors (already dummy coded, now we center):
 # we center by subtracting the mean
+model_data$spp.DF = model_data$spp.DF - mean(model_data$spp.DF)
+model_data$spp.PR = model_data$spp.PR - mean(model_data$spp.PR)
+model_data$spp.EC.L = model_data$spp.EC.L - mean(model_data$spp.EC.L)
+model_data$spp.EC.A = model_data$spp.EC.A - mean(model_data$spp.EC.A)
+model_data$spp.DM = model_data$spp.DM - mean(model_data$spp.DM)
 model_data$spp.DES.L = model_data$spp.DES.L - mean(model_data$spp.DES.L)
 
-
-# covariates (z-transform):
+# covariates (we z-transform):
+# we z-transform by using scale()
 model_data$z.DOP = as.vector(scale(model_data$DOP))
 mean(model_data$z.DOP) # mean of approx 0
 sd(model_data$z.DOP) # SD of 1
@@ -212,8 +241,7 @@ model_data$z.DOY = as.vector(scale(model_data$DOY))
 
 # maximal.model <- glmmTMB(
 #   count ~ mined * spp + cover + DOP + Wtemp + poly(DOY, 2) +
-#     (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  |site) + 
-#     (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  |site:sample),
+#     (1 + spp.DF + spp.PR + spp.EC.L + spp.EC.A + spp.DM + spp.DF + spp.DES.L + z.DOP + z.Wtemp + z.DOY  | site).
 #   data = model_data
 # )
 
@@ -222,14 +250,15 @@ model_data$z.DOY = as.vector(scale(model_data$DOY))
 # i heavily suggest you do your own research on this, as this is just a script to showcase practical application of 
 # GLMMs in the NHST framework, not a statistics class, but here an incomplete and superficial starting point:
 # 
-# covariate -> continuous -> unbound (-inf, +inf) : gaussian
-# covariate -> continuous -> lower bound (>0, +inf) -> not latency: gaussian / gamma
-# covariate -> continuous -> lower bound (0, +inf) -> not latency: tweedie
-# covariate -> continuous -> lower bound (0, +inf) -> latency (waiting time): gamma
-# covariate -> discrete -> upper and lower bound (0,1; probabilities of failure / success): binomial
-# covariate -> discrete -> lower bound (0, +inf) -> independent counts: poisson
-# covariate -> discrete -> lower bound (0, +inf) -> clustered counts: negative binomial
-# covariate -> proportions (upper and lower bound; 0, 1) -> continuous: beta
+# model families for different response types:
+# continuous -> unbound (-inf, +inf) : gaussian
+# continuous -> lower bound (>0, +inf) -> not latency: gaussian / gamma
+# continuous -> lower bound (0, +inf) -> not latency: tweedie
+# continuous -> lower bound (>0, +inf) -> latency (waiting time): gamma
+# discrete -> upper and lower bound (0,1; binary or bounded counts): binomial
+# discrete -> lower bound (0, +inf) -> independent counts: poisson
+# discrete -> lower bound (0, +inf) -> clustered counts: negative binomial
+# proportions (upper and lower bound; 0, 1) -> continuous: beta
 # factor -> ordered levels (distance between consecutive levels is unequal): cumulative logistic
 # factor -> unordered levels: multinomial (bayesian approach)
 
@@ -239,8 +268,7 @@ model_data$z.DOY = as.vector(scale(model_data$DOY))
 # we choose negative binomial, now our model is complete and we can run it
 maximal.model <- glmmTMB(
   count ~ mined * spp + cover + DOP + Wtemp + poly(DOY, 2) +
-    (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  |site) + 
-    (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  |site:sample),
+    (1 + spp.DF + spp.PR + spp.EC.L + spp.EC.A + spp.DM + spp.DES.L + z.DOP + z.Wtemp + z.DOY  | site),
   family = nbinom2,
   data = model_data
 )
@@ -254,8 +282,7 @@ maximal.model <- glmmTMB(
 
 full.model <- glmmTMB(
   count ~ mined * spp + cover + DOP + Wtemp + poly(DOY, 2) +
-    (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  ||site) + 
-    (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  ||site:sample),
+    (1 + spp.DF + spp.PR + spp.EC.L + spp.EC.A + spp.DM + spp.DES.L + z.DOP + z.Wtemp + z.DOY  || site),
   family = nbinom2,
   data = model_data
 )
@@ -275,26 +302,67 @@ full.model <- glmmTMB(
 # colinearity test via variance inflation factors
 # we use a linear model with only fixed main effects (no interactions, no random effects)
 xx=lm(count ~ mined + spp + cover + DOP + Wtemp + poly(DOY, 2), data=model_data) 
-vif(xx)[, 3]^2 # good. anything above 2 or 3 could indicate problems
+vif(xx)[, 3]^2 # use squared results of third column. anything above 2 or 3 could indicate problems
 
 # check residuals
 hist(resid(full.model)) 
 
 # best linear unbiased predictors (BLUPs): deviations from common intercept and slopes
-ranef.diagn.plot(full.model) # good! we want approximately normal distributions, absolute x-axis ranges of less than 3
+ranef.diagn.plot(full.model) # we want approximately normal distributions, no extreme absolute values in x-axes
+
+  # # if you only have access to the online version, run this code to make it glmmTMB compatible
+  # ranef.diagn.plot2 <- function(model.res, QQ=F, col=grey(0.5, alpha=0.75)){
+  # old.par = par(no.readonly = TRUE)
+  # 
+  # re <- ranef(model.res)
+  # if (inherits(re, "ranef.glmmTMB")) re <- re$cond
+  # 
+  # n.plots=sum(unlist(lapply(re, length)))
+  # x=ifelse(n.plots%%2==1,n.plots+1,n.plots)
+  # xmat=outer(1:x, 1:(1+x/2), "*")-n.plots
+  # colnames(xmat)=1:(1+x/2)
+  # rownames(xmat)=1:x
+  # xmat=as.data.frame(as.table(xmat))
+  # xmat=subset(xmat, as.numeric(as.character(xmat$Var1))>=as.numeric(as.character(xmat$Var2)) & xmat$Freq>=0)
+  # sum.diff=as.numeric(as.character(xmat$Var1))-as.numeric(as.character(xmat$Var2))+xmat$Freq
+  # xmat=xmat[sum.diff==min(sum.diff),]
+  # xmat=xmat[which.min(xmat$Freq),]
+  # par(mfrow=c(xmat$Var2, xmat$Var1))
+  # par(mar=c(rep(2, 3), 1))
+  # par(mgp=c(1, 0.5, 0))
+  # for(i in 1:length(re)){
+  #   to.plot=re[[i]]
+  #   for(k in 1:ncol(to.plot)){
+  #     if(QQ){
+  #       qqnorm(to.plot[,k], main="", tcl=-0.25, xlab="", ylab="", pch=19, col=col)
+  #       qqline(to.plot[,k])
+  #     }else{
+  #       hist(to.plot[,k], main="", tcl=-0.25, xlab="", ylab="")
+  #     }
+  #     mtext(text=paste(c(names(re[i]), colnames(to.plot)[k]), collapse=", "), side=3)
+  #   }
+  # }
+  # par(old.par)
+  # }
+  # 
+  # # run updated function
+  # # we want approximately normal distributions and no extreme outliers
+  # # near-zero variance (all values ≈ 0) suggests the random effect could be dropped
+  # ranef.diagn.plot2(full.model)
+  # ranef.diagn.plot.glmmTMB(full.model, QQ=TRUE)  # for Q-Q plots
 
 # basic dharma diagnostics plot
 diagnostics_full <- simulateResiduals(fittedModel = full.model, plot = F)
 plot(diagnostics_full) # looks good. anything significant or red would indicate a problem, meaning we would have to 
-# "fix" the model before we continue
+                       # "fix" the model before we continue
 
 # we can also run specific tests using dharma:
 
     # dispersion tests
         # Dharma model diagnostics  
-        testDispersion(full.model) # standard approach
+        testDispersion(full.model) # standard approach, good for quick check but dispersion parameter difficult to interpret
         
-        # use pearson to check for overdispersion instead
+        # better approach: use pearson to check for overdispersion instead (dispersion parameter is more interpretable)
         testDispersion(full.model, type = "PearsonChisq", alternative = "greater") # good.
         # dispersion parameter of 1 is ideal. 
         # above 1 is overdispersion (increased false positive error), meaning we cannot trust significant findings 
@@ -305,7 +373,7 @@ plot(diagnostics_full) # looks good. anything significant or red would indicate 
         # generally, a range of 0.8 to 1.2 is fine
         
         # check for overdispersion using Roger Mundry's custom function
-        overdisp.test(full.model)
+        overdisp.test(full.model) # should be very similar to the pearson approach using Dharma
     
     # zero inflation test
     testZeroInflation(diagnostics_full) # looks good
@@ -316,7 +384,6 @@ plot(diagnostics_full) # looks good. anything significant or red would indicate 
 
 # now that we have a working full model, we formulate the null model
 # this null model represents our null hypothesis (the test predictors do not matter)
-
 
 
 
@@ -341,8 +408,7 @@ plot(diagnostics_full) # looks good. anything significant or red would indicate 
 
 null.model <- glmmTMB(
   count ~  DOP + Wtemp + poly(DOY, 2) +
-    (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  ||site) + 
-    (1 + spp.DES.L + z.DOP + z.Wtemp + z.DOY  ||site:sample),
+    (1 + spp.DF + spp.PR + spp.EC.L + spp.EC.A + spp.DM + spp.DES.L + z.DOP + z.Wtemp + z.DOY  || site), 
   family = nbinom2,
   data = model_data
 )
@@ -421,7 +487,7 @@ summary(full.model)
 # time (as poly(DOY,2) included in the model) is non significant
 # some of the interaction groups show significance, but this will get clearer in the post hoc test.
 
-confint(full.model) # this is how you can get quick, but less precice confitdence intervals.
+confint(full.model) # this is how you can get quick, but less precice confidence intervals.
 # for better results, i recommend a boot-strapping solution, e.g. via above zenodo link
 
 
@@ -498,6 +564,14 @@ confint(post_hoc_targeted)# again we get the CIs
 
 
 
+# alternatively you can run this code, if you want that comparison for all species
+emm <- emmeans(full.model, ~ mined | spp)
+contrast(emm, method = "pairwise", adjust = "holm")
+
+
+
+
+
 # this concludes the statistical analysis. but it is always a good idea to plot the results
 
 # this package can help create some simple, basic plots of the main findings
@@ -551,7 +625,7 @@ ggplot(df, aes(x = mined, y = response, group = spp, color = spp)) +
 # for every level you remove, you get a new estimate.
 # all of these estimates give you a range (per fixed effects predictor)
 # the larger the range, the less stability you have
-# if the range goes across 0, directionality of the effect is not very clear either
+# if the estimate flips sign (goes over 0) when dropping a single site, that effect is driven by that site and seems fragile.
 # this is additional information on your model and the underlying data
 
 # see https://cran.r-project.org/web/packages/glmmTMB/vignettes/model_evaluation.pdf
@@ -560,8 +634,9 @@ ggplot(df, aes(x = mined, y = response, group = spp, color = spp)) +
 source(system.file("other_methods","influence_mixed.R", package="glmmTMB"))
 
 
-# rerun the model, leaving out one site at a time (this takes a while)
-model_stability = influence_mixed(full.model, groups="site")
+# rerun the model, leaving out one site at a time (this takes a while, so use multiple cores to speed it up)
+ncores = parallel::detectCores() - 2 # get number of cores and leave two free
+model_stability = influence_mixed(full.model, groups = "site", ncores = ncores)
 
 # display result
 car::infIndexPlot(model_stability)
@@ -580,7 +655,7 @@ if (require(reshape2)) {
               ## n.b. may need expand_scale() in older ggplot versions ?
               + scale_x_reverse(expand=expansion(mult=0.15))
               + scale_y_continuous(expand=expansion(mult=0.15))
-              + geom_text(data=subset(inf_long,ord>24),
+              + geom_text(data=subset(inf_long,ord>99), # change this number if you want to limit your levels to display
                           aes(label=nest),vjust=-1.05)
   )
   print(gg_infl)
@@ -608,39 +683,39 @@ inf_table
 cutoff_1 = 4 / length(unique(inf_table$site))
 cutoff_2 = 1
 
-# cutoff_3 from f distribution 
-# Define parameters for your model
-p <- length(coef(full.model))  # Number of predictors (including the intercept)
-n <- nrow(model.frame(full.model))  # Number of observations in the model
-alpha <- 0.05  # Significance level
-
-# Calculate degrees of freedom
-df1 <- p  # Numerator degrees of freedom (number of predictors)
-df2 <- n - p  # Denominator degrees of freedom (remaining observations)
-
-# Calculate the critical F value
-cutoff_3 <- qf(1 - alpha, df1, df2)
+  # # cutoff_3 from f distribution (for observation level Cook's distance in lm, might not be appropriate for glmm re groups)
+  # # Define parameters for your model
+  # p <- length(fixef(full.model)$cond)  # Number of predictors (including the intercept)
+  # n <- nrow(model.frame(full.model))  # Number of observations in the model
+  # alpha <- 0.05  # Significance level
+  # 
+  # # Calculate degrees of freedom
+  # df1 <- p  # Numerator degrees of freedom (number of predictors)
+  # df2 <- n - p  # Denominator degrees of freedom (remaining observations)
+  # 
+  # # Calculate the critical F value
+  # cutoff_3 <- qf(1 - alpha, df1, df2) # might not be appropriate
 
 # Display the results
 cutoff_1
 cutoff_2
-cutoff_3
+#cutoff_3
 
 # sort sites by cook’s distance for better readability
 inf_table_sorted = inf_table[order(inf_table$cooks, decreasing = TRUE), ]
 inf_table_sorted$site = factor(inf_table_sorted$site, levels = inf_table_sorted$site)
 
-# plot
+# plot (Cook's distance cutoffs for group-level influence in GLMMs are actually not well established, but this gives an idea)
 ggplot(inf_table_sorted, aes(x = site, y = cooks)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   geom_hline(yintercept = cutoff_1, linetype = "dashed", color = "red", linewidth = 1) +
   geom_hline(yintercept = cutoff_2, linetype = "dotted", color = "blue", linewidth = 1) +
-  geom_hline(yintercept = cutoff_3, linetype = "dotdash", color = "green", linewidth = 1) +
+  #geom_hline(yintercept = cutoff_3, linetype = "dotdash", color = "green", linewidth = 1) +
   geom_text(aes(label = round(cooks, 2)), vjust = -0.5, size = 3) +
   labs(title = "Cook's Distances by Site",
        subtitle = paste("Red dashed line = 4/n (", round(cutoff_1, 4), "),",
-                        "Blue dotted line = 1,",
-                        "Green dot-dash line = F-distribution cutoff (", round(cutoff_3, 4), ")"),
+                        #"Green dot-dash line = F-distribution cutoff (", round(cutoff_3, 4), ")",
+                        "Blue dotted line = 1,"),
        x = "Site", y = "Cook's Distance") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -655,7 +730,7 @@ ggplot(inf_table_sorted, aes(x = site, y = cooks)) +
 # however, you need to have a good biological, experimental design reason etc.
 # e.g. VF-2 was the only site inside a city, while all other sites were on the countryside (or vice versa)
 # although in this case the decision to remove VF-2 should have probably occurred before starting the analysis
-# but there might be other reasons that are less obvious and only pup up after you get a hint.
+# but there might be other reasons that are less obvious and only pop up after you get a hint.
 
 # this is the end of the script. 
 # the purpose of this script was to show the general statistical approach, it is of course not complete and only a very short
